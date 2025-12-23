@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Agent MCP Dashboard</title>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0",
+        "lucide-react": "https://esm.sh/lucide-react@0.344.0"
+      }
+    }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes pulse-custom {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse-slow {
+            animation: pulse-custom 3s infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans h-screen overflow-hidden">
+    <div id="root" class="h-full"></div>
+
+    <script type="module">
+        import React, { useState, useEffect, useRef } from 'react';
+        import ReactDOM from 'react-dom';
+        import { 
+            LayoutDashboard, 
+            MessageSquare, 
+            Settings, 
+            Shield, 
+            Twitter, 
+            Linkedin, 
+            Terminal,
+            Send,
+            Zap,
+            Wifi,
+            WifiOff,
+            RefreshCw
+        } from 'lucide-react';
+
+        const App = () => {
+            const [connected, setConnected] = useState(false);
+            const [logs, setLogs] = useState([{ type: 'info', content: 'Agent UI Initialized. Waiting for local bridge...' }]);
+            const [accounts, setAccounts] = useState({ twitter: { connected: false }, linkedin: { connected: false } });
+            const [feed, setFeed] = useState([]);
+            const [userInput, setUserInput] = useState('');
+            const [isAiThinking, setIsAiThinking] = useState(false);
+            const socketRef = useRef(null);
+            const logEndRef = useRef(null);
+
+            useEffect(() => {
+                connectBridge();
+                return () => socketRef.current?.close();
+            }, []);
+
+            useEffect(() => {
+                logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [logs]);
+
+            const connectBridge = () => {
+                const socket = new WebSocket('ws://localhost:8080');
+                
+                socket.onopen = () => {
+                    setConnected(true);
+                    addLog('Connected to Local Bridge', 'success');
+                    socket.send(JSON.stringify({ type: 'GET_STATUS' }));
+                };
+
+                socket.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    handleBridgeMessage(data);
+                };
+
+                socket.onclose = () => {
+                    setConnected(false);
+                    addLog('Disconnected from Local Bridge. Retrying...', 'error');
+                    setTimeout(connectBridge, 5000);
+                };
+
+                socketRef.current = socket;
+            };
+
+            const addLog = (content, type = 'info') => {
+                setLogs(prev => [...prev, { content, type, time: new Date().toLocaleTimeString() }]);
+            };
+
+            const handleBridgeMessage = (data) => {
+                switch(data.type) {
+                    case 'STATUS_UPDATE':
+                        setAccounts(data.payload);
+                        break;
+                    case 'LOG':
+                        addLog(data.content, data.level);
+                        break;
+                    case 'FEED_DATA':
+                        setFeed(data.data);
+                        addLog(`Fetched feed for ${data.platform}`, 'info');
+                        break;
+                }
+            };
+
+            const loginPlatform = (platform) => {
+                if (!connected) return;
+                socketRef.current.send(JSON.stringify({ type: 'LOGIN_PLATFORM', platform }));
+            };
+
+            const handleAiChat = async () => {
+                if (!userInput.trim()) return;
+                const message = userInput;
+                setUserInput('');
+                addLog(`User: ${message}`, 'info');
+                setIsAiThinking(true);
+
+                try {
+                    const completion = await websim.chat.completions.create({
+                        messages: [
+                            {
+                                role: "system",
+                                content: `You are the Social Media Agent Controller. 
+                                Current system state: Bridge Connected: ${connected}, 
+                                Platforms: Twitter (${accounts.twitter.connected ? 'Active' : 'Offline'}), 
+                                LinkedIn (${accounts.linkedin.connected ? 'Active' : 'Offline'}).
+                                Help the user manage posts, summarize feeds, and handle interactions.
+                                Respond concisely. If the user wants to post, provide a 'POST_COMMAND' structure.`
+                            },
+                            { role: "user", content: message }
+                        ]
+                    });
+
+                    const response = completion.content;
+                    addLog(`Agent: ${response}`, 'ai');
+                    
+                    // Simple logic to detect if AI wants to perform an action
+                    if (response.toLowerCase().includes('post') && accounts.twitter.connected) {
+                         // Logic for auto-posting would go here
+                    }
+
+                } catch (err) {
+                    addLog('AI Reasoning failed: ' + err.message, 'error');
+                } finally {
+                    setIsAiThinking(false);
+                }
+            };
+
+            return (
+                <div class="flex h-full bg-slate-950">
+                    {/* Sidebar */}
+                    <aside class="w-64 border-r border-slate-800 p-4 flex flex-col gap-6">
+                        <div class="flex items-center gap-2 px-2">
+                            <div class={`w-3 h-3 rounded-full ${connected ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-red-500'}`}></div>
+                            <h1 class="font-bold tracking-tight">AGENT MCP</h1>
+                        </div>
+
+                        <nav class="flex flex-col gap-1">
+                            <div class="text-xs font-semibold text-slate-500 uppercase px-2 mb-2">Social Hub</div>
+                            <button 
+                                onClick={() => loginPlatform('twitter')}
+                                class={`flex items-center gap-3 p-2 rounded-lg transition-colors ${accounts.twitter.connected ? 'bg-sky-500/10 text-sky-400' : 'hover:bg-slate-900 text-slate-400'}`}
+                            >
+                                <Twitter size={18} /> 
+                                <span class="text-sm">Twitter / X</span>
+                                {accounts.twitter.connected && <Zap size={12} class="ml-auto animate-pulse" />}
+                            </button>
+                            <button 
+                                onClick={() => loginPlatform('linkedin')}
+                                class={`flex items-center gap-3 p-2 rounded-lg transition-colors ${accounts.linkedin.connected ? 'bg-blue-600/10 text-blue-400' : 'hover:bg-slate-900 text-slate-400'}`}
+                            >
+                                <Linkedin size={18} /> 
+                                <span class="text-sm">LinkedIn</span>
+                            </button>
+                        </nav>
+
+                        <div class="mt-auto bg-slate-900/50 rounded-xl p-4 border border-slate-800">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs text-slate-500">Bridge Status</span>
+                                {connected ? <Wifi size={14} class="text-green-500" /> : <WifiOff size={14} class="text-red-500" />}
+                            </div>
+                            <div class="text-xs truncate text-slate-400 font-mono">ws://localhost:8080</div>
+                            <button onClick={connectBridge} class="mt-3 w-full py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded flex items-center justify-center gap-2">
+                                <RefreshCw size={12} /> Reconnect
+                            </button>
+                        </div>
+                    </aside>
+
+                    {/* Main Content Area */}
+                    <main class="flex-1 flex flex-col min-w-0">
+                        {/* Header */}
+                        <header class="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-950/50 backdrop-blur-sm">
+                            <div class="flex items-center gap-4">
+                                <LayoutDashboard size={20} class="text-slate-400" />
+                                <h2 class="text-sm font-medium">Control Dashboard</h2>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <Shield size={18} class="text-green-500/50" />
+                                <Settings size={18} class="text-slate-500 cursor-pointer hover:text-slate-300" />
+                            </div>
+                        </header>
+
+                        {/* Content Grid */}
+                        <div class="flex-1 grid grid-cols-12 gap-4 p-4 overflow-hidden">
+                            
+                            {/* Feed / Activity Panel */}
+                            <div class="col-span-8 flex flex-col gap-4 overflow-hidden">
+                                <div class="bg-slate-900/30 border border-slate-800 rounded-xl flex-1 flex flex-col overflow-hidden">
+                                    <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+                                        <div class="flex items-center gap-2">
+                                            <MessageSquare size={16} class="text-slate-400" />
+                                            <span class="text-sm font-semibold">Activity Feed</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+                                        {feed.length === 0 ? (
+                                            <div class="h-full flex flex-col items-center justify-center text-slate-600 gap-2">
+                                                <Zap size={32} class="opacity-20" />
+                                                <p class="text-sm">Connect a platform to see activity</p>
+                                            </div>
+                                        ) : (
+                                            feed.map(item => (
+                                                <div key={item.id} class="bg-slate-800/40 border border-slate-700/50 p-3 rounded-lg flex flex-col gap-1">
+                                                    <div class="flex items-center justify-between">
+                                                        <span class="text-xs font-bold text-slate-300">@{item.author}</span>
+                                                        <span class="text-[10px] uppercase text-slate-500 font-mono">{item.platform}</span>
+                                                    </div>
+                                                    <p class="text-sm text-slate-400">{item.text}</p>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Chat Interface */}
+                                <div class="bg-slate-900/50 border border-slate-800 rounded-xl h-48 flex flex-col overflow-hidden shadow-2xl">
+                                    <div class="flex-1 overflow-y-auto p-4 space-y-2">
+                                        {logs.filter(l => l.type === 'ai' || l.type === 'user').length === 0 && (
+                                            <p class="text-xs text-slate-500 text-center mt-8">Ask the Agent to analyze feed or draft a post...</p>
+                                        )}
+                                        {logs.filter(l => l.type === 'ai' || l.type === 'user').map((log, i) => (
+                                            <div key={i} class={`text-sm p-2 rounded ${log.type === 'ai' ? 'bg-indigo-500/10 text-indigo-300' : 'bg-slate-800/50 text-slate-300'}`}>
+                                                <span class="font-bold mr-2">{log.type === 'ai' ? '🤖' : '👤'}</span>
+                                                {log.content}
+                                            </div>
+                                        ))}
+                                        {isAiThinking && (
+                                            <div class="text-xs text-indigo-400 animate-pulse-slow">Agent is thinking...</div>
+                                        )}
+                                    </div>
+                                    <div class="p-2 border-t border-slate-800 flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            value={userInput}
+                                            onChange={(e) => setUserInput(e.target.value)}
+                                            onKeyPress={(e) => e.key === 'Enter' && handleAiChat()}
+                                            placeholder="Ask the Agent to take action..."
+                                            class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                                        />
+                                        <button 
+                                            onClick={handleAiChat}
+                                            class="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-lg transition-colors"
+                                        >
+                                            <Send size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* System Logs Panel */}
+                            <div class="col-span-4 bg-slate-900/50 border border-slate-800 rounded-xl flex flex-col overflow-hidden">
+                                <div class="p-3 border-b border-slate-800 flex items-center gap-2">
+                                    <Terminal size={14} class="text-slate-400" />
+                                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">System Logs</span>
+                                </div>
+                                <div class="flex-1 overflow-y-auto p-3 font-mono text-[11px] space-y-1">
+                                    {logs.map((log, i) => (
+                                        <div key={i} class={`break-all ${
+                                            log.type === 'success' ? 'text-green-400' : 
+                                            log.type === 'error' ? 'text-red-400' : 
+                                            log.type === 'ai' ? 'text-indigo-400' : 'text-slate-500'
+                                        }`}>
+                                            <span class="opacity-50 mr-2">[{log.time || '--:--'}]</span>
+                                            {log.content}
+                                        </div>
+                                    ))}
+                                    <div ref={logEndRef} />
+                                </div>
+                            </div>
+
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>

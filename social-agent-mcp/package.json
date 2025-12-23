@@ -1,0 +1,14 @@
+{
+  "name": "social-agent-mcp",
+  "version": "1.0.0",
+  "description": "Local bridge for Social Media Agent MCP",
+  "main": "server.js",
+  "dependencies": {
+    "ws": "^8.16.0",
+    "dotenv": "^16.4.5",
+    "axios": "^1.6.7"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}
